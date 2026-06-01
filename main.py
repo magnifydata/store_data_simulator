@@ -5,12 +5,11 @@ import requests
 from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI
 
-# 1. Initialize FastAPI so Render can bind to it successfully
 app = FastAPI()
 
 @app.get("/")
 def home():
-    return {"status": "Supermarket AI & IoT Cloud Simulator is running 24/7"}
+    return {"status": "Enterprise supermarket data pipeline active 24/7"}
 
 # --- Supabase Configuration ---
 SUPABASE_URL = "https://knuwshedoxgapnfogjju.supabase.co"
@@ -44,7 +43,6 @@ def post_data(table_name, payload):
     except Exception as e:
         print(f"❌ Connection error on {table_name}: {e}")
 
-# 2. Your core telemetric simulation engine runs inside a background worker thread
 def run_store_simulator():
     print("🚀 Starting Supermarket AI & IoT Cloud Simulator Background Thread...")
     while True:
@@ -53,13 +51,17 @@ def run_store_simulator():
             now_myt = now_utc + timedelta(hours=8)
             current_time_str = now_myt.strftime("%Y-%m-%d %H:%M:%S")
             current_hour = now_myt.hour
+            current_minute = now_myt.minute
+            
+            # Convert time to a precise decimal float for flawless transitional stepping
+            time_float = current_hour + (current_minute / 60.0)
 
-            # Determine if the store is actively open (10:00 AM to 9:59 PM)
-            is_store_open = 10 <= current_hour < 22
+            # Store operational window: 10:00 AM to 10:00 PM
+            is_store_open = 10.0 <= time_float < 22.0
 
             print(f"--- Generating Cloud Telemetry at {current_time_str} (MYT) ---")
 
-            # A. Temperature & Environment Telemetry (Runs 24/7)
+            # 1. Temperature & Environment Telemetry (Runs 24/7)
             for idx, section in enumerate(FLOOR_SECTIONS):
                 base_temp = 4 if "Chiller" in section or "Cold" in section else 24
                 if "Kitchen" in section or "Bakery" in section:
@@ -67,7 +69,6 @@ def run_store_simulator():
 
                 temp = base_temp + random.uniform(-2, 5)
 
-                # 2% chance to trigger an anomaly event
                 if random.random() < 0.02:
                     temp = random.uniform(41, 45)
 
@@ -80,7 +81,7 @@ def run_store_simulator():
                 }
                 post_data("sensor_telemetry", env_payload)
 
-            # B. POS Queue Data (Queues automatically flush to 0 if closed)
+            # 2. POS Queue Data 
             num_open_lanes = random.randint(3, 7) if is_store_open else 0
             pos_payload_batch = []
             for lane in range(1, 11):
@@ -93,7 +94,7 @@ def run_store_simulator():
                 })
             post_data("pos_telemetry", pos_payload_batch)
 
-            # C. Footfall and Customer Demographics (Only active during store hours)
+            # 3 & 4. Footfall and Customer Demographics
             if is_store_open:
                 people_entering = random.randint(2, 12)
                 footfall_payload = {
@@ -112,32 +113,76 @@ def run_store_simulator():
             else:
                 print("🌙 Store Closed. Skipping Footfall & Demographics logging.")
 
-            # D. Electricity Telemetry (kW)
-            solar_gen = 0
-            if 6 <= current_hour <= 19:
-                if current_hour < 9:
-                    solar_gen = random.uniform(10, 30)
-                elif current_hour < 15:
-                    solar_gen = random.uniform(60, 95)
+            # 5. NEW METRIC ENGINE: High-Accuracy Grid Usage Profile (kW)
+            usage_chillers = 0.0
+            usage_outdoor = 0.0
+            usage_ac = 0.0
+            usage_lighting = 0.0
+            usage_bakery = 0.0
+            usage_store = 0.0
+
+            # MODE A: Night Closure Window (00:00 to 07:30) -> Sums tightly to ~5.3kW - 6.3kW
+            if 0.0 <= time_float < 7.5:
+                usage_chillers = random.uniform(4.0, 4.4)
+                usage_outdoor = random.uniform(1.0, 1.3)
+                usage_ac = random.uniform(0.1, 0.2)
+                usage_lighting = random.uniform(0.1, 0.2)
+                usage_bakery = 0.0
+                usage_store = random.uniform(0.1, 0.2)
+
+            # MODE B: Morning Pre-Open Window (07:30 to 10:00) -> Drops further to ~4.3kW - 5.1kW (Outdoor Off)
+            elif 7.5 <= time_float < 10.0:
+                usage_chillers = random.uniform(4.0, 4.4)
+                usage_outdoor = 0.0 
+                usage_ac = random.uniform(0.1, 0.2)
+                usage_lighting = random.uniform(0.1, 0.2)
+                usage_bakery = random.uniform(0.0, 0.1)
+                usage_store = random.uniform(0.1, 0.2)
+
+            # MODE C: Active Store Hours (10:00 to 22:00) -> Sums securely to your target ~15kW - 25kW
+            elif 10.0 <= time_float < 22.0:
+                usage_chillers = random.uniform(6.5, 8.5)
+                usage_outdoor = 0.0
+                usage_ac = random.uniform(5.5, 8.5)
+                usage_lighting = random.uniform(2.0, 3.5)
+                usage_bakery = random.uniform(1.5, 3.0)
+                usage_store = random.uniform(1.0, 2.0)
+
+            # MODE D: Late Night Transition (22:00 to 24:00) -> Mimics night baseline, security lighting on
+            else:
+                usage_chillers = random.uniform(4.0, 4.4)
+                usage_outdoor = random.uniform(1.0, 1.3)
+                usage_ac = random.uniform(0.1, 0.2)
+                usage_lighting = random.uniform(0.1, 0.2)
+                usage_bakery = 0.0
+                usage_store = random.uniform(0.1, 0.2)
+
+            # Solar Array Day Curve (6 AM to 7 PM)
+            solar_gen = 0.0
+            if 6.0 <= time_float <= 19.0:
+                if time_float < 9.0:
+                    solar_gen = random.uniform(10.0, 30.0)
+                elif time_float < 15.0:
+                    solar_gen = random.uniform(60.0, 95.0)
                 else:
-                    solar_gen = random.uniform(20, 50)
+                    solar_gen = random.uniform(20.0, 50.0)
 
             elec_payload = {
-                "usage_chillers": round(random.uniform(25, 30), 1),
-                "usage_outdoor": round(random.uniform(3, 5), 1),
-                "usage_ac": round(random.uniform(40, 55) if is_store_open else random.uniform(5, 10), 1),
-                "usage_lighting": round(random.uniform(12, 15) if is_store_open else random.uniform(2, 4), 1),
-                "usage_bakery": round(random.uniform(15, 25) if is_store_open else random.uniform(0, 1), 1),
-                "usage_store": round(random.uniform(5, 10) if is_store_open else random.uniform(1, 3), 1),
+                "usage_chillers": round(usage_chillers, 1),
+                "usage_outdoor": round(usage_outdoor, 1),
+                "usage_ac": round(usage_ac, 1),
+                "usage_lighting": round(usage_lighting, 1),
+                "usage_bakery": round(usage_bakery, 1),
+                "usage_store": round(usage_store, 1),
                 "generated_solar": round(solar_gen, 1)
             }
+            
             post_data("electricity_telemetry", elec_payload)
-            print("✅ Telemetric data broadcasted to Supabase successfully.")
+            print("✅ Precision power metrics synchronized with Supabase.")
 
         except Exception as e:
             print(f"❌ Error in background simulation sequence: {e}")
             
         time.sleep(15)
 
-# 3. Spin up the background looping thread safely
 threading.Thread(target=run_store_simulator, daemon=True).start()
